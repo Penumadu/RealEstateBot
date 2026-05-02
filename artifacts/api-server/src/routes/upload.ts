@@ -162,6 +162,17 @@ router.get("/upload", (_req, res) => {
 </html>`);
 });
 
+router.get("/upload/template/:key", (req, res) => {
+  const key = req.params.key as string;
+  const filename = ALLOWED_FORMS[key];
+  if (!filename) { res.status(404).json({ error: "Unknown form key" }); return; }
+  const filePath = path.join(TEMPLATES_DIR, filename);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: "Not uploaded yet" }); return; }
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  fs.createReadStream(filePath).pipe(res);
+});
+
 router.post(
   "/upload/form",
   upload.single("pdf"),

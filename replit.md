@@ -52,7 +52,16 @@ Upload licensed OREA PDFs at `/api/upload`. Named as:
 
 Located at: `artifacts/api-server/forms/templates/`
 
-If templates are uploaded with fillable fields, the system fills them directly. Otherwise it generates clean PDFs from scratch.
+### PDF Generation Strategy (RC4-encrypted templates)
+
+OREA templates are RC4-encrypted (print:yes, copy/change:no), so pdf-lib cannot modify them directly. The system uses a two-step overlay approach:
+
+1. **`pdfRenderer.ts`** — runs `pdftoppm` at 72 DPI (1 pixel = 1 PDF point) to render each template page to PNG images
+2. **`pdfGenerator.ts`** — embeds the PNG as page background in a new pdf-lib document, then draws session data as text at pre-mapped field coordinates
+
+Field coordinates were determined from the coordinate-grid mapper (`/api/mapper/:form`) — a debug tool that renders templates with a blue/red grid overlay at 50pt intervals, making it easy to read exact x/y positions for each blank field.
+
+If templates are unavailable, a clean scratch-pad fallback is used for each form.
 
 ## Database Schema
 

@@ -1,77 +1,50 @@
 import { Router } from "express";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATES_DIR = path.resolve(__dirname, "../../forms/templates");
+import { renderTemplatePages } from "../services/pdfRenderer.js";
 
 const router = Router();
 
-// Serves a template PDF with a coordinate grid overlaid so we can
-// determine exact field positions
+// Renders template via pdftoppm (bypasses encryption), overlays coordinate grid
 router.get("/mapper/:form", async (req, res) => {
   const formName = req.params.form + ".pdf";
-  const filePath = path.join(TEMPLATES_DIR, formName);
-
-  if (!fs.existsSync(filePath)) {
-    res.status(404).send("Template not found");
-    return;
-  }
 
   try {
-    const bytes = fs.readFileSync(filePath);
-    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const pages = await renderTemplatePages(formName);
+    if (pages.length === 0) {
+      res.status(404).send("Template not found or could not be rendered");
+      return;
+    }
+
+    const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
 
-    for (const page of doc.getPages()) {
-      const { width, height } = page.getSize();
+    for (let i = 0; i < pages.length; i++) {
+      const { pngBytes, width, height } = pages[i]!;
+      const embedded = await doc.embedPng(pngBytes);
+      const page = doc.addPage([width, height]);
+      page.drawImage(embedded, { x: 0, y: 0, width, height });
+
       const step = 50;
       const labelSize = 6;
 
-      // Vertical lines + x labels
       for (let x = 0; x <= width; x += step) {
-        page.drawLine({
-          start: { x, y: 0 },
-          end: { x, y: height },
-          thickness: 0.3,
-          color: rgb(0.7, 0.7, 1),
-          opacity: 0.5,
-        });
-        page.drawText(String(x), {
-          x: x + 1,
-          y: height - 10,
-          size: labelSize,
-          font,
-          color: rgb(0, 0, 0.8),
-          opacity: 0.7,
-        });
+        page.drawLine({ start: { x, y: 0 }, end: { x, y: height }, thickness: 0.4, color: rgb(0.5, 0.5, 1), opacity: 0.6 });
+        page.drawText(String(x), { x: x + 1, y: height - 10, size: labelSize, font, color: rgb(0, 0, 0.9), opacity: 0.9 });
       }
 
-      // Horizontal lines + y labels
       for (let y = 0; y <= height; y += step) {
-        page.drawLine({
-          start: { x: 0, y },
-          end: { x: width, y },
-          thickness: 0.3,
-          color: rgb(1, 0.7, 0.7),
-          opacity: 0.5,
-        });
-        page.drawText(String(Math.round(y)), {
-          x: 2,
-          y: y + 1,
-          size: labelSize,
-          font,
-          color: rgb(0.8, 0, 0),
-          opacity: 0.7,
-        });
+        page.drawLine({ start: { x: 0, y }, end: { x: width, y }, thickness: 0.4, color: rgb(1, 0.4, 0.4), opacity: 0.6 });
+        page.drawText(String(Math.round(y)), { x: 2, y: y + 1, size: labelSize, font, color: rgb(0.9, 0, 0), opacity: 0.9 });
       }
+
+      page.drawText(`Page ${i + 1}/${pages.length} — ${formName} — ${width}×${height} pts`, {
+        x: 10, y: height - 20, size: 7, font, color: rgb(0, 0, 0), opacity: 0.7,
+      });
     }
 
     const outBytes = await doc.save();
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${formName}"`);
+    res.setHeader("Content-Disposition", `inline; filename="mapper_${formName}"`);
     res.send(Buffer.from(outBytes));
   } catch (err) {
     res.status(500).send(String(err));
