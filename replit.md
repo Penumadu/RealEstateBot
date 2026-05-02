@@ -47,21 +47,25 @@ A Telegram-based real estate document automation system for Toronto/Ontario agen
 
 ## PDF Templates
 
-Upload licensed OREA PDFs at `/api/upload`. Named as:
-- `form100.pdf`, `form300.pdf`, `form320.pdf`, `form801.pdf`, `scheduleA.pdf`
+Place OREA PDF templates at: `artifacts/forms/templates/`
+Named as: `form100.pdf`, `form300.pdf`, `form320.pdf`, `form801.pdf`, `scheduleA.pdf`
 
-Located at: `artifacts/api-server/forms/templates/`
+### PDF Generation Strategy (AcroForm direct field filling)
 
-### PDF Generation Strategy (RC4-encrypted templates)
+Templates have AcroForm fields (interactive text fields) but are RC4-encrypted (print:yes only). The system uses `qpdf --decrypt` to strip the encryption, producing `*_dec.pdf` files that pdf-lib can fill directly.
 
-OREA templates are RC4-encrypted (print:yes, copy/change:no), so pdf-lib cannot modify them directly. The system uses a two-step overlay approach:
+**At startup / setup:** run once per new template set:
+```
+qpdf --decrypt form100.pdf form100_dec.pdf   # (repeat for each form)
+```
 
-1. **`pdfRenderer.ts`** — runs `pdftoppm` at 72 DPI (1 pixel = 1 PDF point) to render each template page to PNG images
-2. **`pdfGenerator.ts`** — embeds the PNG as page background in a new pdf-lib document, then draws session data as text at pre-mapped field coordinates
+**`pdfGenerator.ts`** — loads `*_dec.pdf`, fills AcroForm fields by exact field name (e.g. `txtbuyer1`, `txtp_price`, `txtp_closedate_d`), flattens fields, and saves. Merged into one combined package PDF using `mergePdfs()`.
 
-Field coordinates were determined from the coordinate-grid mapper (`/api/mapper/:form`) — a debug tool that renders templates with a blue/red grid overlay at 50pt intervals, making it easy to read exact x/y positions for each blank field.
+**Field names** were discovered via `PDFDocument.load(decryptedBytes).getForm().getFields()`.
 
-If templates are unavailable, a clean scratch-pad fallback is used for each form.
+**`pdfRenderer.ts`** — kept for the debug coordinate mapper tool only (`/api/mapper/:form`).
+
+If a decrypted template is unavailable, a clean scratch-pad fallback generates a plain-text PDF.
 
 ## Database Schema
 
