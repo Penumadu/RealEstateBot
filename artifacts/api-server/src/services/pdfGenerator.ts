@@ -25,6 +25,10 @@ type DrawCtx = {
   width: number;
 };
 
+function sanitize(text: string): string {
+  return text.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function line(
   ctx: DrawCtx,
   text: string,
@@ -35,6 +39,7 @@ function line(
   const size = opts.size ?? 10;
   const x = margin + (opts.indent ?? 0);
   const maxWidth = width - margin * 2 - (opts.indent ?? 0);
+  text = sanitize(text);
 
   const words = text.split(" ");
   let currentLine = "";

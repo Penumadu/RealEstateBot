@@ -174,7 +174,7 @@ async function handleStep(
 
     case "buyer_rep_property": {
       const isTbd = text === "TBD" || text.includes("TBD") || text.toLowerCase().includes("area not yet");
-      s.propertyAddress = isTbd ? undefined : text;
+      s.propertyAddress = isTbd ? undefined : text.replace(/[\r\n]+/g, ", ").replace(/\s+/g, " ").trim();
       await ctx.reply("⏳ Generating Form 300...");
       const pdf = await generateForm300(s);
       await ctx.replyWithDocument(
@@ -310,7 +310,7 @@ async function handleStep(
     }
 
     case "offer_address":
-      s.propertyAddress = text;
+      s.propertyAddress = text.replace(/[\r\n]+/g, ", ").replace(/\s+/g, " ").trim();
       s.step = "offer_price";
       await ctx.reply("Enter the offer price (e.g. $850,000):");
       break;
