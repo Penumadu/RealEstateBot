@@ -101,8 +101,9 @@ export function createBot(token: string): Telegraf {
 
     const tl = text.toLowerCase();
 
-    // Handle main menu selections regardless of current step (case-insensitive)
-    if (tl.includes("buyer rep") || tl.includes("form 300") || tl === "1" || tl.startsWith("1️⃣")) {
+    // Handle main menu selections — number shortcuts only when idle, button labels always
+    const isIdle = s.step === "idle";
+    if (tl.includes("buyer rep") || tl.includes("form 300") || tl.startsWith("1️⃣") || (isIdle && tl === "1")) {
       const ns = resetSession(chatId);
       ns.formType = "buyer_rep";
       ns.step = "buyer_rep_count";
@@ -113,7 +114,7 @@ export function createBot(token: string): Telegraf {
       return;
     }
 
-    if (tl.includes("prepare an offer") || tl.includes("offer package") || tl.includes("forms 100") || tl.includes("full offer") || tl === "2" || tl.startsWith("2️⃣")) {
+    if (tl.includes("prepare an offer") || tl.includes("offer package") || tl.includes("forms 100") || tl.includes("full offer") || tl.startsWith("2️⃣") || (isIdle && tl === "2")) {
       const ns = resetSession(chatId);
       ns.formType = "offer";
       ns.step = "offer_mls";
