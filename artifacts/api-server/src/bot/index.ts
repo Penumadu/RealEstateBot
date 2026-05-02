@@ -14,6 +14,7 @@ import {
   generateForm320,
   generateForm801,
 } from "../services/pdfGenerator.js";
+import { saveTransaction } from "../services/transactionStore.js";
 
 const sessions = new Map<number, TransactionSession>();
 
@@ -133,6 +134,7 @@ async function handleStep(
         { source: Buffer.from(pdf), filename: "Form300_BuyerRepAgreement.pdf" },
         { caption: "✅ Form 300 — Buyer Representation Agreement\n\nPlease send for signatures." }
       );
+      await saveTransaction(chatId, s, ["Form 300"]).catch(() => {});
       s.step = "idle";
       await ctx.reply(
         "Done! What would you like to do next?",
@@ -370,7 +372,7 @@ async function handleStep(
             ]).oneTime().resize()
           );
         } else {
-          await generateOfferPackage(ctx, s);
+          await generateOfferPackage(ctx, s, chatId);
         }
       } else {
         await ctx.reply(
@@ -392,7 +394,7 @@ async function handleClauseSelection(
   text: string
 ): Promise<void> {
   if (text === "✅ Done — No More Conditions") {
-    await generateOfferPackage(ctx as Parameters<typeof generateOfferPackage>[0], s);
+    await generateOfferPackage(ctx as Parameters<typeof generateOfferPackage>[0], s, undefined);
     return;
   }
 
@@ -488,7 +490,8 @@ async function generateOfferPackage(
     reply: (text: string, extra?: object) => Promise<unknown>;
     replyWithDocument: (doc: object, extra?: object) => Promise<unknown>;
   },
-  s: TransactionSession
+  s: TransactionSession,
+  chatId?: number
 ): Promise<void> {
   await ctx.reply("⏳ Generating your offer package — this may take a moment...");
 
@@ -520,6 +523,10 @@ async function generateOfferPackage(
     { source: Buffer.from(pdf801), filename: "Form801_OfferSummary.pdf" },
     { caption: "📄 Form 801 — Offer Summary Document" }
   );
+
+  const formsGenerated = ["Form 100", "Form 320", "Form 801"];
+  if (s.clauses.length > 0) formsGenerated.splice(1, 0, "Schedule A");
+  if (chatId) await saveTransaction(chatId, s, formsGenerated).catch(() => {});
 
   const buyerList = s.buyers.map((b) => `• ${b.name} (${b.email})`).join("\n");
   await ctx.reply(
