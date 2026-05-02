@@ -15,6 +15,11 @@ import {
   generateForm801,
 } from "../services/pdfGenerator.js";
 import { saveTransaction } from "../services/transactionStore.js";
+import {
+  sendForSignature,
+  buildSubmittersFromSession,
+  buildDocumentsFromPdfs,
+} from "../services/docuseal.js";
 
 const sessions = new Map<number, TransactionSession>();
 
@@ -83,7 +88,7 @@ export function createBot(token: string): Telegraf {
     const text = ctx.message.text.trim();
 
     try {
-      await handleStep(ctx, s, text);
+      await handleStep(ctx, s, text, chatId);
     } catch (err) {
       logger.error({ err }, "Bot step error");
       await ctx.reply("⚠️ Something went wrong. Type /start to begin again.");
@@ -96,7 +101,8 @@ export function createBot(token: string): Telegraf {
 async function handleStep(
   ctx: { reply: (text: string, extra?: object) => Promise<unknown>; replyWithDocument: (doc: object, extra?: object) => Promise<unknown> },
   s: TransactionSession,
-  text: string
+  text: string,
+  chatId?: number
 ): Promise<void> {
   switch (s.step) {
 
@@ -132,17 +138,80 @@ async function handleStep(
       const pdf = await generateForm300(s);
       await ctx.replyWithDocument(
         { source: Buffer.from(pdf), filename: "Form300_BuyerRepAgreement.pdf" },
-        { caption: "✅ Form 300 — Buyer Representation Agreement\n\nPlease send for signatures." }
+        { caption: "✅ Form 300 — Buyer Representation Agreement" }
       );
-      await saveTransaction(chatId, s, ["Form 300"]).catch(() => {});
-      s.step = "idle";
+      await saveTransaction(chatId ?? 0, s, ["Form 300"]).catch(() => {});
+      s.pendingPdfs = [{ name: "Form 300 — Buyer Representation Agreement", bytes: pdf }];
+      s.step = "sign_agent_email";
       await ctx.reply(
-        "Done! What would you like to do next?",
-        Markup.keyboard([
-          ["📝 New Buyer Rep Agreement (Form 300)"],
-          ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
-        ]).oneTime().resize()
+        "Send this form for e-signatures via DocuSeal?\n\nEnter your (the agent's) email address to include you as a signer, or type 'skip' to skip:",
+        Markup.removeKeyboard()
       );
+      break;
+    }
+
+    case "sign_agent_email": {
+      if (text.toLowerCase() !== "skip") {
+        s.agentEmail = text;
+      }
+      s.step = "sign_confirm";
+      const signerList = [
+        ...s.buyers.map((b) => `• ${b.name} — ${b.email} (Buyer)`),
+        ...(s.agentEmail ? [`• ${s.buyerAgentName ?? "Agent"} — ${s.agentEmail} (Buyer's Agent)`] : []),
+      ].join("\n");
+      await ctx.reply(
+        `Signature requests will be sent to:\n\n${signerList}\n\nSend now?`,
+        Markup.keyboard([["✅ Yes — Send for Signatures", "⏭️ Skip — I'll handle manually"]]).oneTime().resize()
+      );
+      break;
+    }
+
+    case "sign_confirm": {
+      if (text === "✅ Yes — Send for Signatures") {
+        await ctx.reply("⏳ Sending to DocuSeal...");
+        try {
+          const pdfs = s.pendingPdfs ?? [];
+          const submitters = buildSubmittersFromSession(s);
+          if (s.agentEmail && s.buyerAgentName) {
+            const existing = submitters.find(sub => sub.role === "Buyer's Agent");
+            if (existing) existing.email = s.agentEmail;
+            else submitters.push({ name: s.buyerAgentName, email: s.agentEmail, role: "Buyer's Agent" });
+          }
+          const docs = buildDocumentsFromPdfs(pdfs);
+          const property = s.propertyAddress ?? s.mlsNumber ?? "Transaction";
+          const result = await sendForSignature(docs, submitters, `${property} — OREA Forms`);
+          const signerLines = result.signers.map(sig =>
+            `• ${sig.name} (${sig.role}): ${sig.signingUrl}`
+          ).join("\n");
+          await ctx.reply(
+            `✅ Sent! Signature requests emailed to all parties.\n\nSigning links:\n${signerLines}`,
+            Markup.keyboard([
+              ["📝 New Buyer Rep Agreement (Form 300)"],
+              ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
+            ]).oneTime().resize()
+          );
+        } catch (err) {
+          logger.error({ err }, "DocuSeal send error");
+          await ctx.reply(
+            "⚠️ Could not send via DocuSeal. Please send the PDFs manually.\n\nType /start to begin a new transaction.",
+            Markup.keyboard([
+              ["📝 New Buyer Rep Agreement (Form 300)"],
+              ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
+            ]).oneTime().resize()
+          );
+        }
+      } else {
+        await ctx.reply(
+          "No problem — the PDFs are ready to send manually.\n\nWhat would you like to do next?",
+          Markup.keyboard([
+            ["📝 New Buyer Rep Agreement (Form 300)"],
+            ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
+          ]).oneTime().resize()
+        );
+      }
+      s.pendingPdfs = undefined;
+      s.agentEmail = undefined;
+      s.step = "idle";
       break;
     }
 
@@ -528,10 +597,19 @@ async function generateOfferPackage(
   if (s.clauses.length > 0) formsGenerated.splice(1, 0, "Schedule A");
   if (chatId) await saveTransaction(chatId, s, formsGenerated).catch(() => {});
 
-  const buyerList = s.buyers.map((b) => `• ${b.name} (${b.email})`).join("\n");
-  await ctx.reply(
-    `✅ Offer package complete!\n\nForms generated for:\n${buyerList}\n\nPlease review and send for signatures.\n\nType /start to prepare another transaction.`
-  );
+  const pendingPdfs = [
+    { name: "Form 100 — Agreement of Purchase and Sale", bytes: pdf100 },
+    { name: "Form 320 — Confirmation of Co-operation", bytes: pdf320 },
+    { name: "Form 801 — Offer Summary Document", bytes: pdf801 },
+  ];
+  if (s.clauses.length > 0) {
+    pendingPdfs.splice(1, 0, { name: "Schedule A — Conditions and Clauses", bytes: pdfSchedA });
+  }
+  s.pendingPdfs = pendingPdfs;
+  s.step = "sign_agent_email";
 
-  s.step = "idle";
+  await ctx.reply(
+    "✅ All forms generated!\n\nSend for e-signatures via DocuSeal?\n\nEnter your (the agent's) email to be included as a signer, or type 'skip':",
+    Markup.removeKeyboard()
+  );
 }

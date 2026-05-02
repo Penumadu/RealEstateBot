@@ -17,6 +17,11 @@ export type Clause = {
   text: string;
 };
 
+export type PendingPdf = {
+  name: string;
+  bytes: Uint8Array;
+};
+
 export type TransactionSession = {
   step: string;
   formType?: "buyer_rep" | "offer";
@@ -47,6 +52,9 @@ export type TransactionSession = {
   statusCertDays?: string;
   saleOfPropertyDays?: string;
   customClauseDescription?: string;
+
+  pendingPdfs?: PendingPdf[];
+  agentEmail?: string;
 };
 
 export function createSession(): TransactionSession {
