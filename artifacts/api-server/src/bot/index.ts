@@ -166,11 +166,14 @@ async function handleStep(
       s.buyerAgentName = text;
       s.step = "buyer_rep_property";
       await ctx.reply(
-        "Enter the property address or area of interest (or type 'TBD'):"); 
+        "Enter the property address or area of interest:",
+        Markup.keyboard([["🏙️ TBD — Area Not Yet Specified"]]).resize()
+      );
       break;
 
     case "buyer_rep_property": {
-      s.propertyAddress = text === "TBD" ? undefined : text;
+      const isTbd = text === "TBD" || text.includes("TBD") || text.toLowerCase().includes("area not yet");
+      s.propertyAddress = isTbd ? undefined : text;
       await ctx.reply("⏳ Generating Form 300...");
       const pdf = await generateForm300(s);
       await ctx.replyWithDocument(
@@ -181,14 +184,15 @@ async function handleStep(
       s.pendingPdfs = [{ name: "Form 300 — Buyer Representation Agreement", bytes: pdf }];
       s.step = "sign_agent_email";
       await ctx.reply(
-        "Send this form for e-signatures via DocuSeal?\n\nEnter your (the agent's) email address to include you as a signer, or type 'skip' to skip:",
-        Markup.removeKeyboard()
+        "Send for e-signatures via DocuSeal?\n\nEnter your email to be included as a signer:",
+        Markup.keyboard([["⏭️ Skip — I'll send manually"]]).resize()
       );
       break;
     }
 
     case "sign_agent_email": {
-      if (text.toLowerCase() !== "skip") {
+      const isSkip = text.toLowerCase().includes("skip") || text.toLowerCase() === "skip";
+      if (!isSkip) {
         s.agentEmail = text;
       }
       s.step = "sign_confirm";
@@ -223,27 +227,27 @@ async function handleStep(
           await ctx.reply(
             `✅ Sent! Signature requests emailed to all parties.\n\nSigning links:\n${signerLines}`,
             Markup.keyboard([
-              ["📝 New Buyer Rep Agreement (Form 300)"],
-              ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
-            ]).oneTime().resize()
+              ["1️⃣ Buyer Rep Agreement (Form 300)"],
+              ["2️⃣ Full Offer Package (Forms 100, 320, 801, Schedule A)"],
+            ]).resize()
           );
         } catch (err) {
           logger.error({ err }, "DocuSeal send error");
           await ctx.reply(
-            "⚠️ Could not send via DocuSeal. Please send the PDFs manually.\n\nType /start to begin a new transaction.",
+            "⚠️ Could not send via DocuSeal. Please send the PDFs manually.",
             Markup.keyboard([
-              ["📝 New Buyer Rep Agreement (Form 300)"],
-              ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
-            ]).oneTime().resize()
+              ["1️⃣ Buyer Rep Agreement (Form 300)"],
+              ["2️⃣ Full Offer Package (Forms 100, 320, 801, Schedule A)"],
+            ]).resize()
           );
         }
       } else {
         await ctx.reply(
-          "No problem — the PDFs are ready to send manually.\n\nWhat would you like to do next?",
+          "No problem — the PDFs are ready to send manually. What would you like to do next?",
           Markup.keyboard([
-            ["📝 New Buyer Rep Agreement (Form 300)"],
-            ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
-          ]).oneTime().resize()
+            ["1️⃣ Buyer Rep Agreement (Form 300)"],
+            ["2️⃣ Full Offer Package (Forms 100, 320, 801, Schedule A)"],
+          ]).resize()
         );
       }
       s.pendingPdfs = undefined;
@@ -319,19 +323,32 @@ async function handleStep(
     case "offer_deposit":
       s.depositAmount = text;
       s.step = "offer_deposit_payable";
-      await ctx.reply("Deposit payable to (e.g. Listing Brokerage in trust):");
+      await ctx.reply(
+        "Deposit payable to:",
+        Markup.keyboard([
+          ["Listing Brokerage in Trust"],
+          ["Seller's Lawyer in Trust"],
+          ["Buyer's Lawyer in Trust"],
+        ]).resize()
+      );
       break;
 
     case "offer_deposit_payable":
       s.depositPayable = text;
       s.step = "offer_closing";
-      await ctx.reply("Enter the closing / completion date (e.g. June 30, 2025):");
+      await ctx.reply(
+        "Enter the closing / completion date:\n_e.g. June 30, 2025_",
+        { parse_mode: "Markdown", ...Markup.removeKeyboard() }
+      );
       break;
 
     case "offer_closing":
       s.closingDate = text;
       s.step = "offer_irrevocability";
-      await ctx.reply("Enter the irrevocability date & time (e.g. May 10, 2025 at 11:59 PM):");
+      await ctx.reply(
+        "Enter the irrevocability date & time:\n_e.g. May 10, 2025 at 11:59 PM_",
+        { parse_mode: "Markdown", ...Markup.removeKeyboard() }
+      );
       break;
 
     case "offer_irrevocability":
@@ -373,7 +390,13 @@ async function handleStep(
         );
       } else {
         s.step = "offer_coop_commission";
-        await ctx.reply("Enter the co-operating commission (e.g. 2.5% of sale price):");
+        await ctx.reply(
+          "Enter the co-operating commission:",
+          Markup.keyboard([
+            ["2.5% of sale price", "2% of sale price"],
+            ["3% of sale price", "1% of sale price"],
+          ]).resize()
+        );
       }
       break;
 
@@ -382,7 +405,7 @@ async function handleStep(
       s.step = "offer_buyers_count";
       await ctx.reply(
         "How many buyers are on this offer?",
-        Markup.keyboard([["1", "2", "3"]]).oneTime().resize()
+        Markup.keyboard([["1", "2", "3"]]).resize()
       );
       break;
 
@@ -402,12 +425,15 @@ async function handleStep(
     case "offer_conditions": {
       s.step = "offer_select_clauses";
       await ctx.reply(
-        "Which conditions are you including? Select one at a time, then tap Done when finished.",
-        Markup.keyboard([
-          ["🏦 Financing", "🔍 Home Inspection"],
-          ["📋 Status Certificate (Condo)", "🏠 Sale of Buyer's Property"],
-          ["✏️ Custom Clause", "✅ Done — No More Conditions"],
-        ]).oneTime().resize()
+        "Which conditions are you including?\n\nTap one at a time, then tap *Done* when finished:",
+        {
+          parse_mode: "Markdown",
+          ...Markup.keyboard([
+            ["🏦 Financing", "🔍 Home Inspection"],
+            ["📋 Status Certificate (Condo)", "🏠 Sale of Buyer's Property"],
+            ["✏️ Custom Clause", "✅ Done — No More Conditions"],
+          ]).resize(),
+        }
       );
       break;
     }
@@ -419,7 +445,10 @@ async function handleStep(
     case "offer_financing_amount":
       s.financingAmount = text;
       s.step = "offer_financing_days";
-      await ctx.reply("How many Business Days for the financing condition? (e.g. 5):");
+      await ctx.reply(
+        "How many Business Days for the financing condition?",
+        Markup.keyboard([["5", "7", "10"], ["14", "21"]]).resize()
+      );
       break;
 
     case "offer_financing_days":
@@ -528,11 +557,11 @@ async function handleStep(
           s.step = "offer_conditions";
           await ctx.reply(
             "All buyers added! Does this offer have any conditions?",
-            Markup.keyboard([["Yes — Add Conditions", "No — Firm Offer"]]).oneTime().resize()
+            Markup.keyboard([["✅ Yes — Add Conditions", "🔒 No — Firm Offer"]]).resize()
           );
         }
       } else if (s.step === "offer_conditions") {
-        if (text === "Yes — Add Conditions") {
+        if (text.includes("Yes") || text.includes("Add Conditions")) {
           s.step = "offer_select_clauses";
           await ctx.reply(
             "Which conditions are you including?",
@@ -574,13 +603,22 @@ async function handleClauseSelection(
     await ctx.reply("Enter the financing amount (e.g. $850,000):", Markup.removeKeyboard());
   } else if (text.includes("Home Inspection")) {
     s.step = "offer_inspection_days";
-    await ctx.reply("How many Business Days for the inspection condition? (e.g. 10):");
+    await ctx.reply(
+      "How many Business Days for the inspection condition?",
+      Markup.keyboard([["5", "7", "10"], ["14", "21"]]).resize()
+    );
   } else if (text.includes("Status Certificate")) {
     s.step = "offer_status_cert_days";
-    await ctx.reply("How many Business Days for the status certificate review? (e.g. 10):");
+    await ctx.reply(
+      "How many Business Days for the status certificate review?",
+      Markup.keyboard([["10", "14", "21"], ["30"]]).resize()
+    );
   } else if (text.includes("Sale of Buyer")) {
     s.step = "offer_sale_of_property_days";
-    await ctx.reply("How many days for the sale of property condition? (e.g. 30):");
+    await ctx.reply(
+      "How many days for the sale of property condition?",
+      Markup.keyboard([["30", "60", "90"]]).resize()
+    );
   } else if (text.includes("Custom")) {
     s.step = "offer_custom_description";
     await ctx.reply(
