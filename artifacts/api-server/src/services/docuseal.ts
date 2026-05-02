@@ -101,10 +101,10 @@ export function buildSubmittersFromSession(
     });
   });
 
-  if (session.buyerAgentName) {
+  if (session.buyerAgentName && session.agentEmail) {
     submitters.push({
       name: session.buyerAgentName,
-      email: `agent@${(session.buyerBrokerageName ?? "brokerage").toLowerCase().replace(/\s+/g, "")}.com`,
+      email: session.agentEmail,
       role: "Buyer's Agent",
     });
   }
