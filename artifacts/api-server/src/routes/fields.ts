@@ -9,6 +9,7 @@ import {
   generateForm320,
   generateForm801,
   generateScheduleA,
+  mergePdfs,
 } from "../services/pdfGenerator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -107,7 +108,18 @@ router.get("/preview/:form", async (req, res) => {
     else if (form === "form320") bytes = await generateForm320(MOCK_SESSION);
     else if (form === "form801") bytes = await generateForm801(MOCK_SESSION);
     else if (form === "scheduleA") bytes = await generateScheduleA(MOCK_SESSION);
-    else { res.status(404).send("Unknown form"); return; }
+    else if (form === "offer-package") {
+      const [f100, fSchedA, f320, f801] = await Promise.all([
+        generateForm100(MOCK_SESSION),
+        generateScheduleA(MOCK_SESSION),
+        generateForm320(MOCK_SESSION),
+        generateForm801(MOCK_SESSION),
+      ]);
+      bytes = await mergePdfs([f100, fSchedA, f320, f801]);
+    } else if (form === "buyer-rep") {
+      const f300 = await generateForm300(MOCK_SESSION);
+      bytes = await mergePdfs([f300]);
+    } else { res.status(404).send("Unknown form"); return; }
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="preview_${form}.pdf"`);

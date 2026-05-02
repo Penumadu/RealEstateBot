@@ -2,6 +2,25 @@ import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf
 import type { TransactionSession } from "../bot/session.js";
 import { renderTemplatePages, type RenderedPage } from "./pdfRenderer.js";
 
+/**
+ * Merges multiple pdf-lib-generated PDFs (not encrypted originals) into one.
+ * Works because our overlay PDFs are freshly created with pdf-lib.
+ */
+export async function mergePdfs(pdfBytes: Uint8Array[]): Promise<Uint8Array> {
+  const merged = await PDFDocument.create();
+  for (const bytes of pdfBytes) {
+    try {
+      const doc = await PDFDocument.load(bytes);
+      const indices = Array.from({ length: doc.getPageCount() }, (_, i) => i);
+      const pages = await merged.copyPages(doc, indices);
+      for (const page of pages) merged.addPage(page);
+    } catch {
+      // skip any unreadable chunk
+    }
+  }
+  return merged.save();
+}
+
 // ─── Sanitize ───────────────────────────────────────────────────────────────
 
 export function sanitize(text: string): string {

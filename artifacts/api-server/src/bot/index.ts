@@ -13,6 +13,7 @@ import {
   generateScheduleA,
   generateForm320,
   generateForm801,
+  mergePdfs,
 } from "../services/pdfGenerator.js";
 import { saveTransaction } from "../services/transactionStore.js";
 import {
@@ -177,16 +178,17 @@ async function handleStep(
       s.propertyAddress = isTbd ? undefined : text.replace(/[\r\n]+/g, ", ").replace(/\s+/g, " ").trim();
       await ctx.reply("⏳ Generating Form 300...");
       const pdf = await generateForm300(s);
+      const combined = await mergePdfs([pdf]);
       await ctx.replyWithDocument(
-        { source: Buffer.from(pdf), filename: "Form300_BuyerRepAgreement.pdf" },
-        { caption: "✅ Form 300 — Buyer Representation Agreement" }
+        { source: Buffer.from(combined), filename: "OREA_Form300_BuyerRepAgreement.pdf" },
+        { caption: "📦 *Buyer Rep Package — Form 300*\n\n💾 Tap the file to download / save.", parse_mode: "Markdown" }
       );
       await saveTransaction(chatId ?? 0, s, ["Form 300"]).catch(() => {});
-      s.pendingPdfs = [{ name: "Form 300 — Buyer Representation Agreement", bytes: pdf }];
+      s.pendingPdfs = [{ name: "Form 300 — Buyer Representation Agreement", bytes: combined }];
       s.step = "sign_agent_email";
       await ctx.reply(
-        "Send for e-signatures via DocuSeal?\n\nEnter your email to be included as a signer:",
-        Markup.keyboard([["⏭️ Skip — I'll send manually"]]).resize()
+        "✅ Package ready!\n\n*Download:* Tap the PDF above to save it.\n\n*Send for e-signatures?*\nEnter your agent email to send via DocuSeal, or skip:",
+        { parse_mode: "Markdown", ...Markup.keyboard([["⏭️ Skip — I'll send manually"]]).resize() }
       );
       break;
     }
@@ -782,45 +784,39 @@ async function generateOfferPackage(
     generateForm801(s),
   ]);
 
-  await ctx.replyWithDocument(
-    { source: Buffer.from(pdf100), filename: "Form100_AgreementOfPurchaseAndSale.pdf" },
-    { caption: "📄 Form 100 — Agreement of Purchase and Sale" }
-  );
-
+  // Assemble ordered list: Form 100, Schedule A (if conditions), Form 320, Form 801
+  const formsToMerge: Uint8Array[] = [pdf100];
+  const formsGenerated = ["Form 100"];
   if (s.clauses.length > 0) {
-    await ctx.replyWithDocument(
-      { source: Buffer.from(pdfSchedA), filename: "ScheduleA_Conditions.pdf" },
-      { caption: "📄 Schedule A — Conditions and Clauses" }
-    );
+    formsToMerge.push(pdfSchedA);
+    formsGenerated.push("Schedule A");
   }
+  formsToMerge.push(pdf320, pdf801);
+  formsGenerated.push("Form 320", "Form 801");
+
+  // Merge all into one combined PDF package
+  const combined = await mergePdfs(formsToMerge);
+
+  const formsList = formsGenerated.join(" + ");
+  const addr = s.propertyAddress ?? s.mlsNumber ?? "Property";
+  const safeName = addr.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "_").slice(0, 40);
 
   await ctx.replyWithDocument(
-    { source: Buffer.from(pdf320), filename: "Form320_ConfirmationOfCooperation.pdf" },
-    { caption: "📄 Form 320 — Confirmation of Co-operation and Representation" }
+    { source: Buffer.from(combined), filename: `OREA_OfferPackage_${safeName}.pdf` },
+    {
+      caption: `📦 *Complete Offer Package*\n\n📄 ${formsList}\n\n📍 ${addr}\n\n💾 Tap the file to download / save.`,
+      parse_mode: "Markdown",
+    }
   );
 
-  await ctx.replyWithDocument(
-    { source: Buffer.from(pdf801), filename: "Form801_OfferSummary.pdf" },
-    { caption: "📄 Form 801 — Offer Summary Document" }
-  );
-
-  const formsGenerated = ["Form 100", "Form 320", "Form 801"];
-  if (s.clauses.length > 0) formsGenerated.splice(1, 0, "Schedule A");
   if (chatId) await saveTransaction(chatId, s, formsGenerated).catch(() => {});
 
-  const pendingPdfs = [
-    { name: "Form 100 — Agreement of Purchase and Sale", bytes: pdf100 },
-    { name: "Form 320 — Confirmation of Co-operation", bytes: pdf320 },
-    { name: "Form 801 — Offer Summary Document", bytes: pdf801 },
-  ];
-  if (s.clauses.length > 0) {
-    pendingPdfs.splice(1, 0, { name: "Schedule A — Conditions and Clauses", bytes: pdfSchedA });
-  }
-  s.pendingPdfs = pendingPdfs;
+  // Store combined PDF for DocuSeal (single document)
+  s.pendingPdfs = [{ name: `OREA Offer Package — ${addr}`, bytes: combined }];
   s.step = "sign_agent_email";
 
   await ctx.reply(
-    "✅ All forms generated!\n\nSend for e-signatures via DocuSeal?\n\nEnter your (the agent's) email to be included as a signer, or type 'skip':",
-    Markup.removeKeyboard()
+    `✅ Package ready! ${formsGenerated.length} forms merged into one PDF.\n\n*Download:* Tap the PDF above to save it.\n\n*Send for e-signatures?*\nEnter your agent email to send all forms for signing via DocuSeal, or skip:`,
+    { parse_mode: "Markdown", ...Markup.keyboard([["⏭️ Skip — I'll send manually"]]).resize() }
   );
 }
