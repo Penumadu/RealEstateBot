@@ -329,11 +329,26 @@ async function handleStep(
           ["Listing Brokerage in Trust"],
           ["Seller's Lawyer in Trust"],
           ["Buyer's Lawyer in Trust"],
+          ["✏️ Other..."],
         ]).resize()
       );
       break;
 
     case "offer_deposit_payable":
+      if (text === "✏️ Other...") {
+        s.step = "offer_deposit_payable_custom";
+        await ctx.reply("Type who the deposit is payable to:", Markup.removeKeyboard());
+        break;
+      }
+      s.depositPayable = text;
+      s.step = "offer_closing";
+      await ctx.reply(
+        "Enter the closing / completion date:\n_e.g. June 30, 2025_",
+        { parse_mode: "Markdown", ...Markup.removeKeyboard() }
+      );
+      break;
+
+    case "offer_deposit_payable_custom":
       s.depositPayable = text;
       s.step = "offer_closing";
       await ctx.reply(
@@ -395,12 +410,27 @@ async function handleStep(
           Markup.keyboard([
             ["2.5% of sale price", "2% of sale price"],
             ["3% of sale price", "1% of sale price"],
+            ["✏️ Other..."],
           ]).resize()
         );
       }
       break;
 
     case "offer_coop_commission":
+      if (text === "✏️ Other...") {
+        s.step = "offer_coop_commission_custom";
+        await ctx.reply("Type the co-operating commission:", Markup.removeKeyboard());
+        break;
+      }
+      s.coopCommission = text;
+      s.step = "offer_buyers_count";
+      await ctx.reply(
+        "How many buyers are on this offer?",
+        Markup.keyboard([["1", "2", "3"]]).resize()
+      );
+      break;
+
+    case "offer_coop_commission_custom":
       s.coopCommission = text;
       s.step = "offer_buyers_count";
       await ctx.reply(
@@ -447,26 +477,66 @@ async function handleStep(
       s.step = "offer_financing_days";
       await ctx.reply(
         "How many Business Days for the financing condition?",
-        Markup.keyboard([["5", "7", "10"], ["14", "21"]]).resize()
+        Markup.keyboard([["5", "7", "10"], ["14", "21"], ["✏️ Other..."]]).resize()
       );
       break;
 
     case "offer_financing_days":
+      if (text === "✏️ Other...") {
+        s.step = "offer_financing_days_custom";
+        await ctx.reply("Type the number of Business Days for financing:", Markup.removeKeyboard());
+        break;
+      }
+      s.financingDays = text;
+      await generateAndAddClause(ctx, s, "financing");
+      break;
+
+    case "offer_financing_days_custom":
       s.financingDays = text;
       await generateAndAddClause(ctx, s, "financing");
       break;
 
     case "offer_inspection_days":
+      if (text === "✏️ Other...") {
+        s.step = "offer_inspection_days_custom";
+        await ctx.reply("Type the number of Business Days for inspection:", Markup.removeKeyboard());
+        break;
+      }
+      s.inspectionDays = text;
+      await generateAndAddClause(ctx, s, "inspection");
+      break;
+
+    case "offer_inspection_days_custom":
       s.inspectionDays = text;
       await generateAndAddClause(ctx, s, "inspection");
       break;
 
     case "offer_status_cert_days":
+      if (text === "✏️ Other...") {
+        s.step = "offer_status_cert_days_custom";
+        await ctx.reply("Type the number of Business Days for status certificate review:", Markup.removeKeyboard());
+        break;
+      }
+      s.statusCertDays = text;
+      await generateAndAddClause(ctx, s, "status_certificate");
+      break;
+
+    case "offer_status_cert_days_custom":
       s.statusCertDays = text;
       await generateAndAddClause(ctx, s, "status_certificate");
       break;
 
     case "offer_sale_of_property_days":
+      if (text === "✏️ Other...") {
+        s.step = "offer_sale_of_property_days_custom";
+        await ctx.reply("Type the number of days for the sale of property condition:", Markup.removeKeyboard());
+        break;
+      }
+      s.saleOfPropertyDays = text;
+      await generateAndAddClause(ctx, s, "sale_of_property");
+      break;
+
+    case "offer_sale_of_property_days_custom":
       s.saleOfPropertyDays = text;
       await generateAndAddClause(ctx, s, "sale_of_property");
       break;
