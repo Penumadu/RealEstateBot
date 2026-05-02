@@ -48,20 +48,38 @@ const CLAUSE_OPTIONS: { type: ClauseType; label: string; emoji: string }[] = [
 export function createBot(token: string): Telegraf {
   const bot = new Telegraf(token);
 
-  const showMainMenu = async (ctx: { reply: (text: string, extra?: object) => Promise<unknown> }, prompt = "What would you like to do?") => {
-    await ctx.reply(prompt,
-      Markup.keyboard([
-        ["📝 New Buyer Rep Agreement (Form 300)"],
-        ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
-      ]).resize()
+  const showMainMenu = async (ctx: { reply: (text: string, extra?: object) => Promise<unknown> }) => {
+    await ctx.reply(
+      "📋 *Available Form Types*\n\n" +
+      "1️⃣ *Buyer Rep Agreement — Form 300*\n" +
+      "   Set up buyer representation. Collects buyer info, brokerage, agent name, and property area.\n\n" +
+      "2️⃣ *Full Offer Package — Forms 100, 320, 801 + Schedule A*\n" +
+      "   Prepare a complete offer. Includes purchase agreement, co-operation confirmation, offer summary, and AI-written condition clauses.\n\n" +
+      "Tap a button below or type *1* or *2* to get started:",
+      {
+        parse_mode: "Markdown",
+        ...Markup.keyboard([
+          ["1️⃣ Buyer Rep Agreement (Form 300)"],
+          ["2️⃣ Full Offer Package (Forms 100, 320, 801, Schedule A)"],
+        ]).resize(),
+      }
     );
   };
 
   bot.start(async (ctx) => {
     resetSession(ctx.chat.id);
     await ctx.reply(
-      "👋 Welcome to the Ontario Real Estate Forms Bot!\n\n" +
-        "I help you prepare OREA forms and send them for signature.",
+      "👋 *Welcome to the Ontario Real Estate Forms Bot!*\n\n" +
+      "I help Ontario real estate agents prepare OREA form packages and send them for e-signature via DocuSeal.\n\n" +
+      "📄 Forms I can generate:\n" +
+      "• Form 100 — Agreement of Purchase and Sale\n" +
+      "• Form 300 — Buyer Representation Agreement\n" +
+      "• Form 320 — Confirmation of Co-operation\n" +
+      "• Form 801 — Offer Summary Document\n" +
+      "• Schedule A — AI-written condition clauses\n\n" +
+      "🔍 MLS auto-lookup powered by Repliers\n" +
+      "✍️ E-signatures via DocuSeal",
+      { parse_mode: "Markdown" }
     );
     await showMainMenu(ctx);
   });
@@ -81,8 +99,10 @@ export function createBot(token: string): Telegraf {
 
     logger.info({ text, step: s.step }, "Bot received message");
 
-    // Handle main menu selections regardless of current step
-    if (text.includes("Buyer Rep Agreement") || text === "1️⃣ Buyer Rep") {
+    const tl = text.toLowerCase();
+
+    // Handle main menu selections regardless of current step (case-insensitive)
+    if (tl.includes("buyer rep") || tl.includes("form 300") || tl === "1" || tl.startsWith("1️⃣")) {
       const ns = resetSession(chatId);
       ns.formType = "buyer_rep";
       ns.step = "buyer_rep_count";
@@ -93,7 +113,7 @@ export function createBot(token: string): Telegraf {
       return;
     }
 
-    if (text.includes("Prepare an Offer") || text.includes("Forms 100") || text === "2️⃣ Offer") {
+    if (tl.includes("prepare an offer") || tl.includes("offer package") || tl.includes("forms 100") || tl.includes("full offer") || tl === "2" || tl.startsWith("2️⃣")) {
       const ns = resetSession(chatId);
       ns.formType = "offer";
       ns.step = "offer_mls";
