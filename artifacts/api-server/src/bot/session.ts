@@ -29,6 +29,7 @@ export type TransactionSession = {
   mlsNumber?: string;
   propertyAddress?: string;
   listPrice?: string;
+  repliersFilled?: boolean;
 
   offerPrice?: string;
   depositAmount?: string;

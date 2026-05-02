@@ -20,6 +20,7 @@ import {
   buildSubmittersFromSession,
   buildDocumentsFromPdfs,
 } from "../services/docuseal.js";
+import { fetchPropertyByMls } from "../services/repliers.js";
 
 const sessions = new Map<number, TransactionSession>();
 
@@ -215,11 +216,57 @@ async function handleStep(
       break;
     }
 
-    case "offer_mls":
+    case "offer_mls": {
       s.mlsNumber = text;
-      s.step = "offer_address";
-      await ctx.reply("Enter the property address:");
+      await ctx.reply("🔍 Looking up MLS listing...");
+      const property = await fetchPropertyByMls(text);
+      if (property) {
+        s.propertyAddress = property.address;
+        s.listPrice = property.listPrice;
+        if (property.listingBrokerageName) s.listingBrokerageName = property.listingBrokerageName;
+        if (property.coopCommission) s.coopCommission = property.coopCommission;
+        s.step = "offer_mls_confirm";
+        const lines = [
+          `📍 *${property.address}*`,
+          `💰 List Price: ${property.listPrice || "N/A"}`,
+          property.listingBrokerageName ? `🏢 Listing Brokerage: ${property.listingBrokerageName}` : null,
+          property.coopCommission ? `🤝 Co-op Commission: ${property.coopCommission}` : null,
+        ].filter(Boolean).join("\n");
+        await ctx.reply(
+          `✅ Listing found!\n\n${lines}\n\nIs this the correct property?`,
+          {
+            parse_mode: "Markdown",
+            ...Markup.keyboard([["✅ Yes, correct", "❌ No, enter manually"]]).oneTime().resize(),
+          }
+        );
+      } else {
+        s.step = "offer_address";
+        await ctx.reply(
+          "ℹ️ Couldn't find that MLS number automatically. Let's enter the details manually.\n\nEnter the property address:",
+          Markup.removeKeyboard()
+        );
+      }
       break;
+    }
+
+    case "offer_mls_confirm": {
+      if (text === "✅ Yes, correct") {
+        s.step = "offer_price";
+        const hint = s.listPrice ? ` (list price is ${s.listPrice})` : "";
+        await ctx.reply(
+          `Enter your offer price${hint}:`,
+          Markup.removeKeyboard()
+        );
+      } else {
+        s.propertyAddress = undefined;
+        s.listPrice = undefined;
+        s.listingBrokerageName = undefined;
+        s.coopCommission = undefined;
+        s.step = "offer_address";
+        await ctx.reply("Enter the property address:", Markup.removeKeyboard());
+      }
+      break;
+    }
 
     case "offer_address":
       s.propertyAddress = text;
@@ -253,8 +300,16 @@ async function handleStep(
 
     case "offer_irrevocability":
       s.irrevocabilityDate = text;
-      s.step = "offer_listing_brokerage";
-      await ctx.reply("Enter the listing brokerage name:");
+      if (s.listingBrokerageName) {
+        s.step = "offer_buyer_brokerage";
+        await ctx.reply(
+          `Listing brokerage auto-filled: *${s.listingBrokerageName}*\n\nEnter the buyer's brokerage name:`,
+          { parse_mode: "Markdown", ...Markup.removeKeyboard() }
+        );
+      } else {
+        s.step = "offer_listing_brokerage";
+        await ctx.reply("Enter the listing brokerage name:");
+      }
       break;
 
     case "offer_listing_brokerage":
@@ -271,8 +326,19 @@ async function handleStep(
 
     case "offer_buyer_agent":
       s.buyerAgentName = text;
-      s.step = "offer_coop_commission";
-      await ctx.reply("Enter the co-operating commission (e.g. 2.5% of sale price):");
+      if (s.coopCommission) {
+        s.step = "offer_buyers_count";
+        await ctx.reply(
+          `Co-op commission auto-filled: *${s.coopCommission}*\n\nHow many buyers are on this offer?`,
+          {
+            parse_mode: "Markdown",
+            ...Markup.keyboard([["1", "2", "3"]]).oneTime().resize(),
+          }
+        );
+      } else {
+        s.step = "offer_coop_commission";
+        await ctx.reply("Enter the co-operating commission (e.g. 2.5% of sale price):");
+      }
       break;
 
     case "offer_coop_commission":
