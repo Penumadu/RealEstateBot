@@ -48,45 +48,56 @@ const CLAUSE_OPTIONS: { type: ClauseType; label: string; emoji: string }[] = [
 export function createBot(token: string): Telegraf {
   const bot = new Telegraf(token);
 
+  const showMainMenu = async (ctx: { reply: (text: string, extra?: object) => Promise<unknown> }, prompt = "What would you like to do?") => {
+    await ctx.reply(prompt,
+      Markup.keyboard([
+        ["📝 New Buyer Rep Agreement (Form 300)"],
+        ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
+      ]).resize()
+    );
+  };
+
   bot.start(async (ctx) => {
     resetSession(ctx.chat.id);
     await ctx.reply(
       "👋 Welcome to the Ontario Real Estate Forms Bot!\n\n" +
-        "I help you prepare OREA forms and send them for signature. " +
-        "What would you like to do?",
-      Markup.keyboard([
-        ["📝 New Buyer Rep Agreement (Form 300)"],
-        ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
-      ])
-        .oneTime()
-        .resize()
+        "I help you prepare OREA forms and send them for signature.",
     );
+    await showMainMenu(ctx);
   });
 
-  bot.hears("📝 New Buyer Rep Agreement (Form 300)", async (ctx) => {
-    const s = resetSession(ctx.chat.id);
-    s.formType = "buyer_rep";
-    s.step = "buyer_rep_count";
-    await ctx.reply(
-      "Let's set up the Buyer Representation Agreement.\n\nHow many buyers are on this agreement?",
-      Markup.keyboard([["1", "2", "3"]]).oneTime().resize()
-    );
-  });
-
-  bot.hears("📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)", async (ctx) => {
-    const s = resetSession(ctx.chat.id);
-    s.formType = "offer";
-    s.step = "offer_mls";
-    await ctx.reply(
-      "Let's prepare the offer package.\n\nPlease enter the MLS number:",
-      Markup.removeKeyboard()
-    );
+  bot.command("menu", async (ctx) => {
+    resetSession(ctx.chat.id);
+    await showMainMenu(ctx);
   });
 
   bot.on(message("text"), async (ctx) => {
     const chatId = ctx.chat.id;
     const s = getSession(chatId);
     const text = ctx.message.text.trim();
+
+    // Handle main menu selections regardless of current step
+    if (text.includes("Buyer Rep Agreement") || text === "1️⃣ Buyer Rep") {
+      const ns = resetSession(chatId);
+      ns.formType = "buyer_rep";
+      ns.step = "buyer_rep_count";
+      await ctx.reply(
+        "Let's set up the Buyer Representation Agreement.\n\nHow many buyers are on this agreement?",
+        Markup.keyboard([["1", "2", "3"]]).oneTime().resize()
+      );
+      return;
+    }
+
+    if (text.includes("Prepare an Offer") || text.includes("Forms 100") || text === "2️⃣ Offer") {
+      const ns = resetSession(chatId);
+      ns.formType = "offer";
+      ns.step = "offer_mls";
+      await ctx.reply(
+        "Let's prepare the offer package.\n\nPlease enter the MLS number:",
+        Markup.removeKeyboard()
+      );
+      return;
+    }
 
     try {
       await handleStep(ctx, s, text, chatId);
@@ -511,11 +522,11 @@ async function handleStep(
         }
       } else {
         await ctx.reply(
-          "Type /start to begin or choose an option from the menu.",
+          "Choose an option below to get started:",
           Markup.keyboard([
             ["📝 New Buyer Rep Agreement (Form 300)"],
             ["📋 Prepare an Offer (Forms 100, 320, 801, Schedule A)"],
-          ]).oneTime().resize()
+          ]).resize()
         );
       }
       void stepMatch;
