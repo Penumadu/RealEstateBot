@@ -79,6 +79,8 @@ export function createBot(token: string): Telegraf {
     // Skip command messages — they are handled by their own handlers
     if (text.startsWith("/")) return;
 
+    logger.info({ text, step: s.step }, "Bot received message");
+
     // Handle main menu selections regardless of current step
     if (text.includes("Buyer Rep Agreement") || text === "1️⃣ Buyer Rep") {
       const ns = resetSession(chatId);
